@@ -49,7 +49,7 @@ ETHERNET make_eth_hdr(uint8_t *s_mac, uint8_t *d_mac) {
 	ETHERNET eth;
 	memcpy(&eth.dmac, d_mac, 6);
 	memcpy(&eth.smac, s_mac, 6);
-	eth.type = htons(0x0806);
+	eth.type = htons(ETH_TYPE_ARP);
 
 	return eth;
 }
@@ -127,7 +127,6 @@ int find_sender_mac(const u_char *packet, uint8_t *sender_mac, uint32_t sender_i
 	ETHERNET *eth = (struct ETHERNET*) packet;
 	if (ntohs(eth->type) == ETH_TYPE_ARP) {
 		ARP *arp = (struct ARP*) &packet[ETH_HDR_LEN];
-
 		
 		if (htons(arp->opcode) == 0x2 			// if arp reply packet
 			&& arp->target_ip == my_ip 			// if destination ip is my ip
@@ -146,10 +145,10 @@ void usage() {
 	printf("sample: ./send_arp ens33 192.168.10.2 192.168.10.1\n");
 }
 
-//=====================
+//============================
 //	sender = victim
 //	target = gateway
-//=====================
+//============================
 
 int main(int argc, char *argv[]) {
 	if (argc != 4) {
