@@ -228,5 +228,5 @@ int main(int argc, char *argv[]) {
 
 	printf("\n[*] Sending attack packet to sender(victim)!\n");
 	while (true)
-		pcap_sendpacket(handle, attack_packet, sizeof(attack_packet));
+		pcap_sendpacket(handle, attack_packet, packet_len);
 }
