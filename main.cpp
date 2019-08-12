@@ -199,11 +199,6 @@ int main(int argc, char *argv[]) {
 
 	make_arp(&request_packet, my_mac, broadcast_mac, REQUEST, my_mac, my_ip, unknown_mac, sender_ip, &packet_len);
 
-	uint8_t p[42];
-	memcpy(p, &request_packet, sizeof(request_packet));
-	for (int i=0; i<sizeof(request_packet); i++)
-		printf("%02x ", p[i]);
-	
 	int count = 0;
 	while (true) {
 		// send requset packet until get sender's arp reply packet
